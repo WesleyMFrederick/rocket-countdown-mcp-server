@@ -6,10 +6,12 @@
   "type": "module",
   "bin": "./index.ts",
   "scripts": {
-    "start": "ts-node-esm index.ts",
-    "build": "tsc",
+    "start": "NODE_ENV=production ts-node-esm index.ts",
+    "build": "tsc --strict false",
+    "prebuild": "rm -f index.js",
     "dev": "ts-node-esm index.ts",
-    "inspect": "npm run build && NODE_ENV=production npx @modelcontextprotocol/inspector node index.js"
+    "inspect": "npm run build && NODE_ENV=production npx @modelcontextprotocol/inspector node index.js",
+    "mcp": "npm run build && NODE_ENV=production node index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",

@@ -15,19 +15,36 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Rocket countdown tool
 server.tool(
-  "continue-countdown",
-  "Simulate a rocket countdown by progressively counting down numbers. Start with an initial number and continue until reaching zero for 'BLAST OFF!'. Each call displays the current number and provides the next number to count down. The LLM should display the current number then call continue-countdown with the next number.",
-  { 
-    current_number: z.number()
+  "continueCountdown",
+  "Simulate a rocket countdown by progressively counting down numbers. Start with an initial number and continue until reaching zero for 'BLAST OFF!'. Each call displays the current number and provides the next number to count down. The LLM should display the current number then call continueCcountdown with the next number.",
+  // NEW SCHEMA: Removed z.preprocess
+  {
+    current_number: z.number() // Using z.number() directly
       .int()
       .min(0)
       .max(10)
       .describe("The current number in the rocket countdown sequence. Must be between 0 and 10.")
   },
-  async ({ current_number }, _extra) => {
+  // NEW HANDLER START: Added explicit validation
+  async (args, _extra) => {
+    // Explicitly get, convert, and validate the input number
+    const rawInput = args.current_number;
+    console.error(`Debug: Received raw input: ${rawInput}, type: ${typeof rawInput}`);
+    
+    const current_number = Number(rawInput); // Convert to number
+
+    // Validate the number
+    if (isNaN(current_number) || !Number.isInteger(current_number) || current_number < 0 || current_number > 10) {
+      console.error(`Validation Error: Invalid input received: ${rawInput}`);
+      // Throw an error for invalid input
+      throw new Error(`Invalid input: current_number must be an integer between 0 and 10. Received: ${rawInput}`); 
+    }
+
+    console.error(`Debug: Processed current_number: ${current_number}, type: ${typeof current_number}`);
     // Wait for 1 second before processing
     await delay(1000);
 
+    // Rest of the handler logic using the validated 'current_number'
     if (current_number > 0) {
       // Output the current number
       console.error(`${current_number}...`);
@@ -61,19 +78,9 @@ server.tool(
 
 // Start the server
 const startServer = async () => {
-  // Check if we're being run through the MCP Inspector
-  const isInspector = process.env.NODE_ENV === 'production';
-  
-  if (!isInspector) {
-    console.error("Starting Rocket Countdown MCP Server with stdio transport...");
-  }
-  
+  // Completely silent startup for MCP environments
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  
-  if (!isInspector) {
-    console.error("Rocket Countdown MCP Server running on stdio");
-  }
 };
 
 // Graceful shutdown handlers

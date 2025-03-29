@@ -1,0 +1,15 @@
+# Node
+node_modules/
+
+# Compiled JavaScript
+index.js
+index.js.map
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Environment variables
+.env

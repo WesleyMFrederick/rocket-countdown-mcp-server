@@ -5,18 +5,16 @@ This is a Model Context Protocol (MCP) server that implements a rocket countdown
 ## Features
 
 - Start a countdown from 10 to 1, followed by "BLAST OFF!"
-- Stop the countdown at any time
-- Reset the countdown to a specific value
-- Get the current status of the countdown
 
 ## Tools
 
-The server exposes the following tools:
+The server exposes the following tool:
 
-1. `start-countdown`: Starts the countdown if it's not already running
-2. `stop-countdown`: Stops a running countdown
-3. `reset-countdown`: Resets the countdown to a specified value (default: 10)
-4. `get-countdown-status`: Returns the current countdown status
+1.  `continueCountdown`: Simulates a rocket countdown by progressively counting down numbers.
+    *   **Input**: `current_number` (integer, 0-10).
+    *   **Action**: Outputs the `current_number` to stderr (e.g., "10..."), waits 1 second.
+    *   **Output**: Returns JSON with `next_number_to_count` (which is `current_number - 1`) and `is_final` boolean. If `current_number` is 0, outputs "BLAST OFF!" to stderr and returns "Countdown complete!".
+    *   **Usage**: The client (LLM) needs to call this tool repeatedly, passing the `next_number_to_count` received from the previous call as the `current_number` for the next call, starting with an initial value (e.g., 10) and continuing until the response indicates completion or `next_number_to_count` is less than 0.
 
 ## Setup
 
@@ -73,31 +71,14 @@ When using the MCP Inspector, you might encounter these common errors:
    kill -9 PID    # Kill the process using its PID
    ```
 
-3. **Environment Issues**: If you encounter issues with the MCP server in Claude Desktop, it may be because the app is using `spawn ${command} ${arguments}`, meaning it's starting a new process directly without the context of your shell environment (which contains your path, nvm settings, etc.).
+3. **Tool Not Listed / "Preprocessing input: undefined" Error**: If the MCP server connects but doesn't list its tools (e.g., `continueCountdown` is missing) and you see a debug message like `Debug: Preprocessing input: undefined, type: undefined` in the MCP panel status for the server, it might be due to schema preprocessing.
 
-   - **Solution**: You can solve this by using bash as an intermediary:
+   - **Cause**: Using `z.preprocess` within a tool's input schema definition (`server.tool(...)`) can sometimes cause the preprocessing function to execute during the server's startup/registration phase, before any client has actually called the tool. In this context, the input value is `undefined`, leading to the debug message and potentially interfering with the tool registration process.
+   - **Solution**: Remove the `z.preprocess` wrapper from the schema definition. Move the input conversion (e.g., `Number(val)`) and validation logic *inside* the main tool handler function (`async (args, _extra) => { ... }`). This ensures the logic only runs when the tool is actually called with data.
 
-```json
-"rocket-countdown": {
-    "command": "bash",
-    "args": [
-        "-c",
-        "npx rocket-countdown-mcp"
-    ]
-}
-```
 
-This approach works particularly well for other MCP servers too, for example:
 
-```json
-"filesystem": {
-    "command": "bash",
-    "args": [
-        "-c",
-        "npx @modelcontextprotocol/server-filesystem ~/Downloads"
-    ]
-}
-```
+
 
 #### Advanced Testing
 
@@ -113,81 +94,43 @@ For more advanced debugging and testing techniques, see the `llm_docs/debugging_
 - `index.ts`: The TypeScript source code
 - `package.json`: Project configuration and dependencies
 - `tsconfig.json`: TypeScript configuration
-- `docs/`: Implementation documentation
 - `llm_docs/`: Documentation about MCP
-- `obsidian_docs/`: Additional Obsidian documentation
-- `index.js`: The compiled JavaScript (created when running `npm run build` or `npm run inspect`, needed for MCP Inspector)
+- `.gitignore`: Specifies intentionally untracked files that Git should ignore
 
 ## How to Connect
 
 This MCP server uses stdio for communication, so it can be connected to any MCP client that supports the stdio transport.
 
-### Using with Claude Desktop
+## Using with Claude Desktop in a local repository
 
 Claude Desktop fully supports MCP and can connect to this server. To use with Claude Desktop:
 
 1. Download and install [Claude Desktop](https://claude.ai/download) if you haven't already
 2. Open Claude Desktop
-3. Click on the settings gear icon in the lower left
-4. Navigate to "MCP Servers"
-5. Click "Add Server"
-6. Select "Local Process" as the server type
+3. Go to Claude > Settings
+4. Click on Developer in left sidebar
+5. Click "Edit Config"
+6. Edit claude_desktop_config.json in a text editor
 7. Enter the following details:
-   - Name: Rocket Countdown
-   - Command: npx
-   - Arguments: --yes ts-node-esm index.ts
-   - Working Directory: (the path to this repository)
+  ``` json
+{
+  "mcpServers": {
+    "rocket-countdown": {
+      "command": "/opt/homebrew/bin/npx",
+      "args": [
+        "-y",
+        "absolute/path/to/working/directory"
+      ]
+    }
+  }
+}
+  ```
+  - **Environment Issues**: If you encounter issues with the MCP server in Claude Desktop, it may be because the app is using `spawn ${command} ${arguments}`, meaning it's starting a new process directly without the context of your shell environment (which contains your path, nvm settings, etc.).
 
-   Your configuration in the Claude Desktop interface should look like this:
-   ```json
-   "rocket-countdown": {
-     "command": "npx",
-     "args": ["--yes", "ts-node-esm", "index.ts"],
-     "workingDirectory": "/path/to/rocket-countdown-mcp"
-   }
-   ```
+  - **Solution**: You can solve this by pointing to the npx command using an absolute path. using bash as an intermediary:
 
-### Alternative: Using with npm run
 
-If you have the repository cloned locally, you can also use `npm run` to start the server:
-
-1. Clone this repository locally
-2. Run `npm install` to install dependencies
-3. Configure Claude Desktop with:
-   - Name: Rocket Countdown
-   - Command: npm
-   - Arguments: ["run", "start"]
-   - Working Directory: (the path to this repository)
-
-   Your configuration would look like this:
-   ```json
-   "rocket-countdown": {
-     "command": "npm",
-     "args": ["run", "start"],
-     "workingDirectory": "/path/to/rocket-countdown-mcp"
-   }
-   ```
-
-   This approach runs the server directly from the repository using npm.
-
-1. Open Claude Desktop settings
-2. Add a new MCP server
-3. Enter the following details:
-   - Name: Rocket Countdown
-   - Command: bash
-   - Arguments: ["-c", "cd /path/to/repository && npx ts-node-esm index.ts"]
-
-   Your configuration would look like this:
-   ```json
-   "rocket-countdown": {
-     "command": "bash",
-     "args": ["-c", "cd /path/to/repository && npx ts-node-esm index.ts"]
-   }
-   ```
-
-   This approach uses npx to temporarily install and run the package.
-
-### Using with MCP Inspector
+## Using with MCP Inspector
 
 For testing and development, you can use the [MCP Inspector](https://github.com/modelcontextprotocol/inspector), which provides a web interface to test your MCP server.
 
@@ -199,10 +142,13 @@ npm run inspect
 
 This is the easiest approach, as it handles both compiling the TypeScript file and starting the inspector.
 
-Alternatively, you can do it manually in two steps:
+Alternatively, you can do it manually in two steps. Note that `index.js` is not present by default after the cleanup, so you must build it first:
 
 ```bash
+# 1. Build the JavaScript output (if not already present)
 npm run build
+
+# 2. Run the inspector with the compiled file
 npx @modelcontextprotocol/inspector node index.js
 ```
 
@@ -222,37 +168,43 @@ These errors occur because the server outputs console logs that the MCP Inspecto
 
 After connecting to the server through an MCP client:
 
-1. Call the `start-countdown` tool to begin the countdown
+1. Call the `continueCountdown` tool to begin the countdown
 2. The server will output each number in the countdown
-3. When the countdown reaches 1, it will output "BLAST OFF!"
-4. Call the `stop-countdown` tool to pause the countdown
-5. Call the `reset-countdown` tool to set the countdown back to 10 (or any other value)
-6. Call the `get-countdown-status` tool to check the current state
-7. Use the new `continue-countdown` tool for an interactive, step-by-step countdown
+3. When the countdown reaches 0, it will output "BLAST OFF!"
 
-### Interactive Countdown Feature
-The server now supports a step-by-step countdown mechanism through the `continue-countdown` tool. This allows for a more interactive countdown where each step can be explicitly controlled.
 
 ### Using the Countdown in Claude Desktop
 
 Once you've set up the server in Claude Desktop using one of the methods described above:
 
-1. In a chat with Claude, type: "@Rocket" and select "Rocket Countdown" from the dropdown
-2. To start the countdown, click "start-countdown" or ask Claude to start the countdown
-3. You'll see the countdown numbers appear in the chat
-4. To stop the countdown before it completes, click "stop-countdown" or ask Claude to stop it
-5. To check the status, click "get-countdown-status" or ask Claude about the current status
-6. To reset the countdown, click "reset-countdown" or ask Claude to reset it (you can specify a new starting value)
+1.  Start a new chat with Claude.
+2.  Tell Claude to start the countdown using the connected MCP server. For example: "Use the Rocket Countdown server to start a countdown from 10."
+3.  Claude should recognize the request and invoke the `continueCountdown` tool with `current_number: 10`.
+4.  You will be prompted to approve the tool use. Click "Approve".
+5.  The server will output "10..." to its logs (viewable via Claude Desktop settings -> Developer -> View Logs) and return the next number (9) to Claude.
+6.  Claude should then automatically call `continueCountdown` again with `current_number: 9`.
+7.  Continue approving each subsequent tool call prompted by Claude.
+8.  When the countdown reaches 0, the server outputs "BLAST OFF!" to its logs, and Claude should report that the countdown is complete.
 
-Example prompt: "@Rocket Countdown I'd like to start the rocket launch sequence"
-
-You can also combine instructions: "@Rocket Countdown Please start the countdown, then after a few seconds stop it, and then reset it to 5"
+**Note:** This tool requires repeated calls and approvals. The countdown progress (`10...`, `9...`, etc.) and the final "BLAST OFF!" message appear in the server's logs, not directly in the chat window. The chat will primarily show Claude requesting approval for each step.
 
 ## License
 
 MIT
 
 ## Changelog
+
+### 2025-03-29 (v1.0.2)
+- **Documentation Cleanup**:
+  - Updated `llm_docs/0_llm_read_first.md` and `llm_docs/3_debugging_mcp_servers.md` to accurately reflect the current single `continueCountdown` tool.
+  - Corrected file paths and testing commands in LLM documentation.
+  - Added explicit documentation synchronization guidelines to `llm_docs/0_llm_read_first.md`.
+  - Ensured LLM docs adhere to the LLM-to-LLM style guide.
+- **Project Cleanup**:
+  - Removed compiled JS files (`index.js`, `index.js.map`) as the project runs via `npx` / `ts-node`.
+  - Added `.gitignore` file with standard Node.js ignores.
+  - Updated `README.md` project structure and MCP Inspector instructions.
+  - Updated `.clinerules` with project execution info and `.gitignore` details.
 
 ### 2025-03-28 (v1.0.1)
 - **Fixed JSON parsing errors** in MCP Inspector:
