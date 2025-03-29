@@ -1,6 +1,6 @@
 # Rocket Countdown MCP Server
 
-This is a Model Context Protocol (MCP) server that implements a rocket countdown timer. It allows users to start, stop, and reset a countdown, and displays "BLAST OFF!" when the countdown reaches zero.
+A Model Context Protocol (MCP) server that implements a rocket countdown timer. It allows users to start, stop, and reset a countdown, and displays "BLAST OFF!" when the countdown reaches zero.
 
 ## Features
 
@@ -15,6 +15,12 @@ The server exposes the following tool:
     *   **Action**: Outputs the `current_number` to stderr (e.g., "10..."), waits 1 second.
     *   **Output**: Returns JSON with `next_number_to_count` (which is `current_number - 1`) and `is_final` boolean. If `current_number` is 0, outputs "BLAST OFF!" to stderr and returns "Countdown complete!".
     *   **Usage**: The client (LLM) needs to call this tool repeatedly, passing the `next_number_to_count` received from the previous call as the `current_number` for the next call, starting with an initial value (e.g., 10) and continuing until the response indicates completion or `next_number_to_count` is less than 0.
+
+## Tool Definition Approach
+
+This project uses the `@modelcontextprotocol/sdk`'s `server.tool()` helper method along with the `zod` library to define the input schema for the `continueCountdown` tool (see `index.ts`). This provides a developer-friendly way to define schemas with type safety in TypeScript.
+
+It's important to note that this SDK-specific approach is an abstraction. Internally, the SDK converts the `zod` schema into the standard JSON Schema format required by the Model Context Protocol specification before exposing the tool definition to clients. The raw protocol definition structure is documented in the general MCP documentation (see `llm_docs/1_mcp_overview.md` under the "Tools" concept).
 
 ## Setup
 

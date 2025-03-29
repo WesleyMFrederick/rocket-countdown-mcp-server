@@ -1,108 +1,82 @@
 # LLM REFERENCE GUIDE - READ THIS FIRST
 
-## YOU HAVE COMMAND LINE ACCESS - USE IT
+## Project Overview: Rocket Countdown MCP Server
 
-As an LLM assistant, you have FULL COMMAND LINE ACCESS via the `BashCommand` tool. Use this capability for direct testing, debugging, and verification. NEVER state or imply that you lack command-line access.
+*   **Purpose:** Implements a Rocket Countdown MCP server (`rocket-countdown`).
+*   **Tool:** Provides one tool: `continueCountdown`.
+    *   Simulates a progressive countdown (10... 9... 8...).
+    *   Input: `current_number` (0-10).
+    *   Output: `next_number_to_count` until 0, then "Countdown complete!".
+    *   Usage: LLM calls tool repeatedly with `next_number_to_count`.
+*   **Transport:** Uses stdio for MCP communication.
 
-```bash
-# CORRECT TESTING PATTERN (Assumes index.js exists, e.g., after `npm run build`)
-node index.js 2> stderr.log > stdout.log
-cat stdout.log  # Verify only JSON protocol messages
+## CRITICAL: Reading Order & Core File
 
-# ALTERNATIVE (using ts-node via npm start, if configured)
-# (Requires inspecting package.json's start script)
-# npm start 2> stderr.log > stdout.log 
-```
+1.  **THIS DOCUMENT** - Essential context, patterns, execution.
+2.  **`./index.ts`** - **START HERE.** Core implementation details.
+3.  **`./README.md`** - User-facing documentation & Changelog.
+4.  **Other `llm_docs/` files** - As needed for specific topics (MCP overview, debugging).
 
-## READING SEQUENCE - FOLLOW THIS ORDER
+## CRITICAL: Execution & Testing (MCP Protocol)
 
-1. **THIS DOCUMENT** - Essential tools and patterns
-2. **index.ts** in root directory - Core implementation details
-   ```
-   READ THIS FILE NEXT: ./index.ts 
-   ```
-3. **README.md** in root directory - User-facing documentation & Changelog
-4. **Other llm_docs files** as needed - Focused reference material
+*   **Direct Execution:** Project runs directly from TypeScript using `npx`.
+    ```bash
+    # PRIMARY EXECUTION/TESTING PATTERN
+    # Separates MCP JSON (stdout) from logs (stderr)
+    npx index.ts 2> stderr.log > stdout.log 
+    
+    # Verify stdout contains ONLY valid MCP JSON messages
+    cat stdout.log 
+    
+    # Check stderr for application logs/errors
+    cat stderr.log 
+    ```
+*   **Command Line Access:** Use `execute_command` for direct testing, debugging, and verification.
+*   **CRITICAL LOGGING PATTERN:** All non-protocol console output MUST use `console.error` to avoid breaking MCP JSON messages on `stdout`.
+    ```typescript
+    // INCORRECT - Breaks MCP protocol on stdout
+    // console.log("Debugging message"); 
+    
+    // CORRECT - Preserves MCP protocol on stdout
+    console.error("Debugging message"); 
+    ```
+*   **JSON Parsing Errors:** Errors like `SyntaxError: Unterminated fractional number in JSON` in `stdout.log` usually indicate incorrect logging (`console.log` instead of `console.error`).
 
-## TOOLS AT YOUR DISPOSAL
+## Available Tools (Current Session)
 
-1. **BashCommand** - Run shell commands directly
-   ```
-   npm commands, file inspection, building, testing
-   ```
+*   **`execute_command`**: Run shell commands (testing, building, file ops).
+*   **`read_file`**: Examine file content (use this, not `cat`).
+*   **`write_to_file`**: Create or overwrite files entirely.
+*   **`replace_in_file`**: Make targeted edits using SEARCH/REPLACE blocks.
+*   **`list_files`**: List directory contents.
+*   **`search_files`**: Regex search across files.
+*   **`list_code_definition_names`**: Get code structure overview.
+*   **`use_mcp_tool`**: Call MCP tools (like `continueCountdown`).
+*   **`ask_followup_question`**: Clarify requirements if needed.
+*   **`attempt_completion`**: Finalize task.
 
-2. **ReadFiles** - Examine file content
-   ```
-   ALWAYS use this for file content, not cat/grep
-   ```
+## Documentation Sync Protocol
 
-3. **FileWriteOrEdit** - Modify files
-   ```
-   Update code using search/replace blocks
-   ```
+After significant code changes (especially tool add/remove/modify):
 
-## PATTERN MATCHING FOR MCP DEBUGGING
+1.  **Update `README.md`**:
+    *   Tools section.
+    *   Changelog.
+2.  **Update `llm_docs/0_llm_read_first.md`**:
+    *   Project Overview / MCP SERVER SPECIFICS if tool definition changes.
+    *   Execution/Testing commands if affected.
+3.  **Update `llm_docs/3_debugging_mcp_servers.md`**:
+    *   Testing commands/examples if affected.
+4.  **Update `.clinerules`**: If new project-wide rules/patterns emerge.
 
-1. **Key Error Pattern**: JSON parsing errors in stdout
-   ```
-   Error: SyntaxError: Unterminated fractional number in JSON
-   ```
+## LLM-to-LLM Documentation Style Reference (`.clinerules`, `llm_docs/`)
 
-2. **Root Cause Pattern**: Console logging to stdout
-   ```typescript
-   // INCORRECT PATTERN - breaks MCP protocol
-   console.log("Message");  
-   
-   // CORRECT PATTERN - preserves protocol
-   console.error("Message");
-   ```
+*   **Objective:** Record critical info (rules, patterns, gotchas) efficiently for future LLMs. Optimize for context window.
+*   **Style:** Extreme conciseness, information density, targeted detail, unambiguous, actionable, structured format (lists, code blocks, headings).
+*   **Use Cases:**
+    *   `.clinerules`: Short, project-wide rules (e.g., "Logging: Use `console.error` ONLY.").
+    *   `llm_docs/`: Deeper technical notes, debugging steps, patterns (e.g., `z.preprocess` issue).
 
-3. **Testing Pattern**: Separate stdout/stderr
-   ```bash
-   # Direct testing pattern (Assumes index.js exists, e.g., after `npm run build`)
-   node index.js 2> stderr.log > stdout.log
-   cat stdout.log  # Should ONLY contain valid JSON
-   ```
+## Next Step: Analyze index.ts
 
-## CONTEXT MANAGEMENT
-
-1. **Focus first** on index.ts to understand core implementation
-2. **Pattern match** against known MCP issues (stderr/stdout separation)
-3. **Use CLI** for direct testing and verification
-4. **Access documentation** selectively based on need
-5. **DOC SYNC**: After significant code changes (esp. tool add/remove/modify), update: 
-   - `README.md` (Tools section & Changelog)
-   - `llm_docs/0_llm_read_first.md` (MCP SERVER SPECIFICS)
-   - `llm_docs/3_debugging_mcp_servers.md` (Testing commands/examples if affected)
-
-## LLM-to-LLM Documentation Style (`.clinerules`, `llm_docs/`)
-
-**Objective:** Record critical information (rules, patterns, gotchas, essential context) for future LLM instances efficiently. Optimize for LLM processing and context window limits.
-
-**Style Guidelines:**
-
-*   **Extreme Conciseness:** Use minimal wording. Eliminate filler and redundant phrases. Focus on keywords and essential facts.
-*   **Information Density:** Pack maximum relevant information into minimum tokens.
-*   **Targeted Detail:** Provide *only* the breadth, depth, and level of detail necessary for a future LLM to understand the specific point or perform the required action. Avoid unnecessary background or explanation. Assume the reader is an LLM with access to the codebase and prior documentation.
-*   **Unambiguous & Precise:** Use exact technical terms. Avoid subjective or vague language. State facts and instructions clearly.
-*   **Actionable:** Frame notes as direct rules, critical facts, or patterns that directly inform future LLM actions or prevent errors.
-*   **Structured Format:** Use lists, code blocks (for commands/examples), and clear headings (`##`, `###`) for rapid parsing by an LLM.
-
-**Example Application:**
-    *   `.clinerules`: Short, project-wide rules/preferences (e.g., "MCP Logging: Use `console.error` ONLY.").
-    *   `llm_docs/`: Deeper technical notes, specific debugging steps, architectural summaries, critical patterns (e.g., the `z.preprocess` issue explanation). Organize logically within relevant files (e.g., `3_debugging_mcp_servers.md`).
-
-## MCP SERVER SPECIFICS
-
-This project implements a Rocket Countdown MCP server (`rocket-countdown`) that:
-1. Provides one tool: `continueCountdown`
-   - Simulates a progressive countdown (e.g., 10... 9... 8...)
-   - Takes `current_number` (0-10) as input.
-   - Returns `next_number_to_count` until 0, then "Countdown complete!".
-   - LLM calls tool repeatedly with `next_number_to_count`.
-2. Uses stdio transport for communication.
-3. Needs strict stdout/stderr separation for protocol integrity.
-
-**CRITICAL IMPLEMENTATION PATTERN**: All console output MUST use stderr (`console.error`) to avoid breaking the MCP protocol JSON messages on stdout.
-
-## BEGIN YOUR ANALYSIS WITH index.ts NEXT
+Proceed to read and analyze `./index.ts` for implementation details.

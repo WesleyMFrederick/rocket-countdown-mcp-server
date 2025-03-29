@@ -1,140 +1,73 @@
-# MCP Server Debugging and Testing Guide for LLMs
+# MCP Server Debugging Techniques
 
-## IMPORTANT: This document is designed for LLM assistants to help debug MCP servers
+This guide provides specific techniques for debugging MCP servers, assuming familiarity with the core concepts in `llm_docs/0_llm_read_first.md`.
 
-When debugging Model Context Protocol (MCP) servers, use these direct testing approaches to efficiently identify and resolve problems:
+## Stdio Transport Debugging
 
-## Stdio Transport Issues
+*   **Core Issue Reminder:** MCP over stdio requires strict separation: `stdout` for JSON protocol messages ONLY, `stderr` for all logs/errors. Any non-JSON to `stdout` breaks the protocol. Use `console.error` for all logging. See `0_llm_read_first.md` for the primary execution pattern.
+*   **Common Error Signatures:** JSON parsing errors in `stdout` (e.g., `SyntaxError: Unterminated fractional number`, `Unexpected token ... is not valid JSON`) usually indicate `console.log` was used instead of `console.error`.
 
-1. CRITICAL: MCP over stdio requires strict channel separation:
-   - stdout: ONLY for JSON protocol messages
-   - stderr: for all logging, user messages, and application output
-   - Any non-JSON output to stdout breaks the protocol
+## Testing & Verification Methods
 
-2. Direct testing to diagnose stdio issues:
-```bash
-# OPTION A: Run compiled JS (requires `npm run build` first)
-node index.js 2> stderr.log > stdout.log
+1.  **Direct CLI Testing (Primary):**
+    ```bash
+    # Run directly from TS, separating outputs
+    npx index.ts 2> stderr.log > stdout.log 
+    
+    # Monitor logs in real-time (separate terminals)
+    tail -f stdout.log
+    tail -f stderr.log
+    
+    # Validate stdout contains ONLY valid JSON
+    # (Press Ctrl+D after server sends messages or stop server)
+    python3 -c "import json, sys; [json.loads(line) for line in sys.stdin]" < stdout.log
+    ```
 
-# OPTION B: Run TS directly via npm start (if package.json configured with ts-node/tsx)
-# npm start 2> stderr.log > stdout.log 
+2.  **Direct CLI Testing (Compiled JS - Secondary):**
+    ```bash
+    # Requires build step first
+    npm run build && node index.js 2> stderr.log > stdout.log
+    # Then use tail -f / python3 validation as above
+    ```
 
-# Then, in another terminal, examine the output:
-cat stdout.log  # Should ONLY contain valid JSON messages
-cat stderr.log  # Should contain all console output
+3.  **MCP Inspector Testing:**
+    *   Useful for full protocol validation, requires compiled JS.
+    ```bash
+    # Build first
+    npm run build
+    
+    # Run inspector (foreground recommended)
+    npm run inspect
+    # Or log output
+    # npm run inspect > inspector.log 2>&1 & 
+    ```
+    *   Use `curl` or Inspector UI to call tools if applicable (check Inspector docs for endpoints/usage).
 
-# Alternatively, monitor in real-time
-tail -f stdout.log
-tail -f stderr.log
-```
+4.  **Port Conflict Resolution:**
+    ```bash
+    # Find processes using a port (e.g., 5173 for Inspector)
+    lsof -i :5173
+    
+    # Terminate conflicting process
+    kill -9 <PID> 
+    ```
 
-3. Common error signatures to identify:
-```
-Error from MCP server: SyntaxError: Unterminated fractional number in JSON at position 2 (line 1 column 3)
-```
-or
-```
-Error from MCP server: Unexpected token 'B', "BLAST OFF!" is not valid JSON
-```
+## Schema Preprocessing Issues (`z.preprocess`)
 
-4. Code fix pattern:
-```typescript
-// INCORRECT - breaks MCP protocol:
-console.log("Countdown: 3...");
-
-// CORRECT - preserves protocol integrity:
-console.error("Countdown: 3...");
-```
-
-5. Required changes for ALL console output:
-```typescript
-// Server startup messages
-if (!isInspector) {
-  console.error("Starting Rocket Countdown MCP Server with stdio transport...");
-}
-
-// Runtime messages
-console.error(`${countdownValue}...`);
-
-// Exception handling
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
-  // Don't exit process - would terminate MCP connection
-});
-```
-
-## Testing Methods (in order of preference)
-
-1. Direct CLI testing - most efficient for quick verification:
-```bash
-# Start server with output redirection (choose OPTION A or B from above)
-# Example using OPTION A (compiled JS):
-npm run build && node index.js 2> stderr.log > stdout.log
-
-# In another terminal, examine logs in real-time:
-tail -f stdout.log
-tail -f stderr.log
-
-# Verify stdout contains ONLY valid JSON (if using OPTION A)
-# (May need adjustment for streaming output if using OPTION B)
-python3 -c "import json, sys; [json.loads(line) for line in sys.stdin]" < stdout.log
-
-```
-
-2. MCP Inspector testing - best for full protocol validation:
-```bash
-# Build the project first (Inspector needs compiled JS)
-npm run build
-
-# Run inspector (foreground for easier monitoring/stopping)
-npm run inspect
-# OR run in background (e.g., using screen or &)
-# screen -d -m npm run inspect
-
-# Or with logs for analysis
-npm run inspect > inspector.log 2>&1 &
-
-# Test specific tools via curl (if Inspector exposes HTTP endpoints, check Inspector docs)
-# Example (adjust port/path as needed):
-# curl -X POST http://localhost:5173/callTool -H "Content-Type: application/json" -d '{"name": "continueCountdown", "arguments": {"current_number": 10}}'
-```
-
-3. Port conflict resolution (when needed):
-```bash
-# Find processes using ports
-lsof -i :5173
-lsof -i :3000
-
-# Terminate processes
-kill -9 PID
-```
-
-## Implementation Strategy
-
-1. Directly test with separated stdout/stderr to diagnose (using `npm start` or compiled JS).
-2. Modify code: replace ALL `console.log` with `console.error`.
-3. Add error handlers (e.g., `process.on('uncaughtException', ...)`) to prevent unexpected stdout writes.
-4. Verify with direct testing and/or MCP Inspector.
-5. Monitor both stdout and stderr during testing.
-
-## REMINDER: When assisting users with MCP servers
-
-1. First run output separation test (`npm start` or compiled JS) to confirm issue.
-2. Replace ALL `console.log` with `console.error`.
-3. Add uncaught exception handlers.
-4. Verify with direct testing via command line.
-5. Confirm with MCP Inspector for full protocol validation.
-
-Direct CLI testing combined with MCP Inspector validation will resolve approximately 90% of MCP stdio transport issues.
-
-## Schema Preprocessing Issues (z.preprocess)
-
-1.  **Problem**: Using `z.preprocess` within a tool's input schema (`server.tool(...)`) can cause the preprocessing function to execute during server startup/registration, *before* the tool is called by a client.
-2.  **Symptom**: This often manifests as:
-    *   Debug messages during startup showing `undefined` input (e.g., `Preprocessing input: undefined`).
-    *   The server failing to list the affected tool in the MCP client (like Cline or Inspector), even if the server connects.
-3.  **Cause**: The preprocessing logic runs in the registration context where no actual input arguments exist yet.
+1.  **Problem**: Using `z.preprocess` within a tool's input schema (`server.tool(...)`) can execute during server registration *before* the tool is called.
+2.  **Symptom**: Debug messages showing `undefined` input during startup; tool fails to appear in MCP clients (Cline, Inspector).
+3.  **Cause**: Preprocessing runs in registration context without actual input arguments.
 4.  **Solution**:
-    *   **Remove `z.preprocess`** from the schema definition.
-    *   Define the schema directly (e.g., `z.number()`, `z.string()`).
-    *   **Move input conversion and validation logic** *inside* the tool's main handler function (`async (args, _extra) => { ... }`). This ensures the logic only executes when the tool is called with actual arguments.
+    *   **Remove `z.preprocess`** from the schema definition (`server.tool(...)`).
+    *   Define schema directly (e.g., `z.number()`).
+    *   **Move input conversion/validation** logic *inside* the tool's handler function (`async (args, _extra) => { ... }`).
+
+## Debugging Checklist
+
+1.  Verify all logging uses `console.error`.
+2.  Test with direct CLI execution, separating `stdout`/`stderr`.
+3.  Monitor `stdout`/`stderr` in real-time (`tail -f`).
+4.  Validate `stdout` contains only JSON (`python3 -c ...`).
+5.  Use MCP Inspector for deeper protocol checks (requires build).
+6.  Check for `z.preprocess` issues in tool schemas if tools aren't listed.
+7.  Check for port conflicts if Inspector or other services fail to start.
